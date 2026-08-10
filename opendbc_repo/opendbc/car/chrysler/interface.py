@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from opendbc.car import get_safety_config, structs
+from opendbc.car import get_safety_config, scale_rot_inertia, structs
 from opendbc.car.chrysler.carcontroller import CarController
 from opendbc.car.chrysler.carstate import CarState
 from opendbc.car.chrysler.radar_interface import RadarInterface
@@ -36,7 +36,9 @@ class CarInterface(CarInterfaceBase):
     elif candidate in CUSW_CARS:
       ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.chryslerCusw)]
 
-    CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+    # RAM HD's recirculating-ball steering gear has more built-in mechanical play than a rack-and-pinion setup,
+    # value tested on RAM HD in https://github.com/commaai/openpilot/issues/25389
+    CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning, steering_angle_deadzone_deg=0.25 if candidate in RAM_HD else 0.0)
     if candidate not in RAM_CARS:
       # Newer FW versions standard on the following platforms, or flashed by a dealer onto older platforms have a higher minimum steering speed.
       new_eps_platform = candidate in (CAR.CHRYSLER_PACIFICA_2019_HYBRID, CAR.CHRYSLER_PACIFICA_2020, CAR.JEEP_GRAND_CHEROKEE_2019, CAR.DODGE_DURANGO)
@@ -104,7 +106,11 @@ class CarInterface(CarInterfaceBase):
       stock_cp.tireStiffnessFactor = 1.0
       stock_cp.tireStiffnessFront = 65155.
       stock_cp.tireStiffnessRear = 80926.
-      stock_cp.wheelbase = 3.79
+      # Mega Cab only: 11.1in longer than the crew-cab short-bed wheelbase this platform otherwise assumes,
+      # see https://en.wikipedia.org/wiki/Ram_Heavy_Duty_(fifth_generation)#Cab_configurations. Revert to 3.79 for other cab/bed configs.
+      stock_cp.wheelbase = 4.08
+      stock_cp.centerToFront = stock_cp.wheelbase * 0.44
+      stock_cp.rotationalInertia = scale_rot_inertia(stock_cp.mass, stock_cp.wheelbase)
       stock_cp.steerRatio = 19.
 
     if 0x4FF in fingerprint[0]:
